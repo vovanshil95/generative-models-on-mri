@@ -220,6 +220,8 @@ class Upsample(nn.Module):
             x = F.interpolate(
                 x, (x.shape[2] * 2, x.shape[3] * 2, x.shape[4] * 2), mode="trilinear"
             )
+        elif self.dims == 2:
+            x = F.interpolate(x, scale_factor=2, mode="bilinear")
         else:
             x = F.interpolate(x, scale_factor=2, mode="trilinear")
         if self.use_conv:

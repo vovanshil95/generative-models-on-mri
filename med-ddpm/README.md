@@ -2,7 +2,7 @@
 # Med-DDPM: Conditional Diffusion Models for Semantic 3D Brain MRI Synthesis (Whole-Head MRI & 4 Modalities Brain MRIs)
 
 
-[[Preprint on ArXiv](https://arxiv.org/pdf/2305.18453.pdf)] | [[Early Access on IEEE Xplore](https://ieeexplore.ieee.org/document/10493074)] 
+[[Preprint on ArXiv](https://arxiv.org/pdf/2305.18453.pdf)] | [[Paper on IEEE Xplore](https://ieeexplore.ieee.org/document/10493074)] 
 
 This repository hosts the official PyTorch implementation and pretrained model weights for our paper, "Conditional Diffusion Models for Semantic 3D Brain MRI Synthesis," which has been accepted for publication in the IEEE Journal of Biomedical and Health Informatics. Our research focuses on the utilization of diffusion models to generate realistic and high-quality 3D medical images while preserving semantic information. We trained our proposed method on both whole-head MRI and brain-extracted 4 modalities MRIs (<a href="http://braintumorsegmentation.org/">BraTS2021</a>).
 
@@ -116,21 +116,10 @@ If our work assists your research, kindly cite us:
   journal={IEEE Journal of Biomedical and Health Informatics}, 
   title={Conditional Diffusion Models for Semantic 3D Brain MRI Synthesis}, 
   year={2024},
-  volume={},
-  number={},
-  pages={1-10},
+  volume={28},
+  number={7},
+  pages={4084-4093},
   doi={10.1109/JBHI.2024.3385504}}
-```
-
-```
-@misc{https://doi.org/10.48550/arxiv.2305.18453,
-  doi = {10.48550/ARXIV.2305.18453},
-  url = {https://arxiv.org/abs/2305.18453},
-  author = {Zolnamar Dorjsembe and Hsing-Kuo Pao and Sodtavilan Odonchimed and Furen Xiao},
-  title = {Conditional Diffusion Models for Semantic 3D Medical Image Synthesis},
-  publisher = {arXiv},
-  year = {2023},
-}
 ```
 
 ## 💡 Acknowledgements

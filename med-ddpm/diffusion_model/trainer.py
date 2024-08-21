@@ -4,6 +4,7 @@
 
 
 import math
+import matplotlib.pyplot as plt
 import copy
 import torch
 from torch import nn, einsum
@@ -110,7 +111,7 @@ class GaussianDiffusion(nn.Module):
         denoise_fn,
         *,
         image_size,
-        depth_size,
+        depth_size=None,
         channels = 1,
         timesteps = 1000,
         loss_type = 'l1',
@@ -118,7 +119,8 @@ class GaussianDiffusion(nn.Module):
         with_condition = False,
         with_pairwised = False,
         apply_bce = False,
-        lambda_bce = 0.0
+        lambda_bce = 0.0,
+        dims=3
     ):
         super().__init__()
         self.channels = channels
@@ -129,6 +131,7 @@ class GaussianDiffusion(nn.Module):
         self.with_pairwised = with_pairwised
         self.apply_bce = apply_bce
         self.lambda_bce = lambda_bce
+        self.dims = dims
 
         if exists(betas):
             betas = betas.detach().cpu().numpy() if isinstance(betas, torch.Tensor) else betas
@@ -236,7 +239,13 @@ class GaussianDiffusion(nn.Module):
         image_size = self.image_size
         depth_size = self.depth_size
         channels = self.channels
-        return self.p_sample_loop((batch_size, channels, depth_size, image_size, image_size), condition_tensors = condition_tensors)
+        
+        if self.dims == 3:
+            sample_dims = (batch_size, channels, depth_size, image_size, image_size)
+        elif self.dims == 2:
+            sample_dims = (batch_size, channels, image_size, image_size)
+            
+        return self.p_sample_loop(sample_dims, condition_tensors = condition_tensors)
 
     @torch.no_grad()
     def interpolate(self, x1, x2, t = None, lam = 0.5):
@@ -262,7 +271,10 @@ class GaussianDiffusion(nn.Module):
         )
 
     def p_losses(self, x_start, t, condition_tensors = None, noise = None):
-        b, c, h, w, d = x_start.shape
+        if self.dims == 3:
+            b, c, h, w, d = x_start.shape
+        elif self.dims == 2:
+            b, c, h, w = x_start.shape
         noise = default(noise, lambda: torch.randn_like(x_start))
 
         if self.with_condition:
@@ -282,8 +294,12 @@ class GaussianDiffusion(nn.Module):
         return loss
 
     def forward(self, x, condition_tensors=None, *args, **kwargs):
-        b, c, d, h, w, device, img_size, depth_size = *x.shape, x.device, self.image_size, self.depth_size
-        assert h == img_size and w == img_size and d == depth_size, f'Expected dimensions: height={img_size}, width={img_size}, depth={depth_size}. Actual: height={h}, width={w}, depth={d}.'
+        if self.dims == 3:
+            b, c, d, h, w, device, img_size, depth_size = *x.shape, x.device, self.image_size, self.depth_size
+            assert h == img_size and w == img_size and d == depth_size, f'Expected dimensions: height={img_size}, width={img_size}, depth={depth_size}. Actual: height={h}, width={w}, depth={d}.'
+        elif self.dims == 2:
+            b, c, h, w, device, img_size = *x.shape, x.device, self.image_size
+            assert h == img_size and w == img_size, f'Expected dimensions: height={img_size}, width={img_size}, Actual: height={h}, width={w}.'
         t = torch.randint(0, self.num_timesteps, (b,), device=device).long()
         return self.p_losses(x, t, condition_tensors=condition_tensors, *args, **kwargs)
 
@@ -308,7 +324,8 @@ class Trainer(object):
         save_and_sample_every = 1000,
         results_folder = './results',
         with_condition = False,
-        with_pairwised = False):
+        with_pairwised = False,
+        plot_on_save = False):
         super().__init__()
         self.model = diffusion_model
         self.ema = EMA(ema_decay)
@@ -330,6 +347,8 @@ class Trainer(object):
         self.train_lr = train_lr
         self.train_batch_size = train_batch_size
         self.with_condition = with_condition
+
+        self.plot_on_save = plot_on_save
 
         self.step = 0
 
@@ -415,11 +434,20 @@ class Trainer(object):
                 else:
                     all_images_list = list(map(lambda n: self.ema_model.sample(batch_size=n), batches))
                     all_images = torch.cat(all_images_list, dim=0)
+                
+                if self.model.dims == 3:
+                    all_images = all_images.transpose(4, 2)
+                    sampleImage = all_images.cpu().numpy()
+                    sampleImage=sampleImage.reshape([self.image_size, self.image_size, self.depth_size])
+                if self.model.dims == 2:
+                    sampleImage = all_images.cpu().numpy()
+                    sampleImage=sampleImage.reshape([self.image_size, self.image_size, 1])
 
-  
-                all_images = all_images.transpose(4, 2)
-                sampleImage = all_images.cpu().numpy()
-                sampleImage=sampleImage.reshape([self.image_size, self.image_size, self.depth_size])
+                if self.plot_on_save:
+                    plt.imshow(sampleImage[:, :, sampleImage.shape[2] // 2], cmap='gray')
+                    plt.title('generated')
+                    plt.show()
+                    
                 nifti_img = nib.Nifti1Image(sampleImage, affine=np.eye(4))
                 nib.save(nifti_img, str(self.results_folder / f'sample-{milestone}.nii.gz'))
                

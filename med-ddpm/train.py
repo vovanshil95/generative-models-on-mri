@@ -3,13 +3,13 @@
 from torchvision.transforms import RandomCrop, Compose, ToPILImage, Resize, ToTensor, Lambda
 from diffusion_model.trainer import GaussianDiffusion, Trainer
 from diffusion_model.unet import create_model
-from dataset import NiftiImageGenerator, NiftiPairImageGenerator
+from dataset import NiftiImageGenerator, NiftiPairImageGenerator, NiftiImageGenerator2d, NiftiPairImageGenerator2d
 import argparse
 import torch
 
 import os 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID" 
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 # -
 
 parser = argparse.ArgumentParser()
@@ -27,6 +27,9 @@ parser.add_argument('--timesteps', type=int, default=250)
 parser.add_argument('--save_and_sample_every', type=int, default=1000)
 parser.add_argument('--with_condition', action='store_true')
 parser.add_argument('-r', '--resume_weight', type=str, default="model/model_128.pt")
+parser.add_argument('--dimentions', type=int, default=3)
+parser.add_argument('--plot_on_save', action='store_true')
+
 args = parser.parse_args()
 
 inputfolder = args.inputfolder
@@ -40,39 +43,73 @@ save_and_sample_every = args.save_and_sample_every
 with_condition = args.with_condition
 resume_weight = args.resume_weight
 train_lr = args.train_lr
+dimentions = args.dimentions
+plot_on_save = args.plot_on_save
 
-# input tensor: (B, 1, H, W, D)  value range: [-1, 1]
-transform = Compose([
-    Lambda(lambda t: torch.tensor(t).float()),
-    Lambda(lambda t: (t * 2) - 1),
-    Lambda(lambda t: t.unsqueeze(0)),
-    Lambda(lambda t: t.transpose(3, 1)),
-])
 
-input_transform = Compose([
-    Lambda(lambda t: torch.tensor(t).float()),
-    Lambda(lambda t: (t * 2) - 1),
-    Lambda(lambda t: t.permute(3, 0, 1, 2)),
-    Lambda(lambda t: t.transpose(3, 1)),
-])
-
-if with_condition:
-    dataset = NiftiPairImageGenerator(
-        inputfolder,
-        targetfolder,
-        input_size=input_size,
-        depth_size=depth_size,
-        transform=input_transform if with_condition else transform,
-        target_transform=transform,
-        full_channel_mask=True
-    )
-else:
-    dataset = NiftiImageGenerator(
-        inputfolder,
-        input_size=input_size,
-        depth_size=depth_size,
-        transform=transform
-    )
+if dimentions == 2:
+    transform = Compose([
+        Lambda(lambda t: torch.tensor(t).float()),
+        Lambda(lambda t: (t * 2) - 1),
+        Lambda(lambda t: t.unsqueeze(0)),
+        Lambda(lambda t: t.transpose(2, 1)),
+    ])
+    
+    input_transform = Compose([
+        Lambda(lambda t: torch.tensor(t).float()),
+        Lambda(lambda t: (t * 2) - 1),
+        Lambda(lambda t: t.permute(2, 0, 1)),
+        Lambda(lambda t: t.transpose(2, 1)),
+    ])
+    
+    if with_condition:
+        dataset = NiftiPairImageGenerator2d(
+            inputfolder,
+            targetfolder,
+            input_size=input_size,
+            transform=input_transform if with_condition else transform,
+            target_transform=transform,
+            full_channel_mask=True
+        )
+    else:
+        dataset = NiftiImageGenerator2d(
+            inputfolder,
+            input_size=input_size,
+            transform=transform
+        )
+elif dimentions == 3:
+    # input tensor: (B, 1, H, W, D)  value range: [-1, 1]
+    transform = Compose([
+        Lambda(lambda t: torch.tensor(t).float()),
+        Lambda(lambda t: (t * 2) - 1),
+        Lambda(lambda t: t.unsqueeze(0)),
+        Lambda(lambda t: t.transpose(3, 1)),
+    ])
+    
+    input_transform = Compose([
+        Lambda(lambda t: torch.tensor(t).float()),
+        Lambda(lambda t: (t * 2) - 1),
+        Lambda(lambda t: t.permute(3, 0, 1, 2)),
+        Lambda(lambda t: t.transpose(3, 1)),
+    ])
+    
+    if with_condition:
+        dataset = NiftiPairImageGenerator(
+            inputfolder,
+            targetfolder,
+            input_size=input_size,
+            depth_size=depth_size,
+            transform=input_transform if with_condition else transform,
+            target_transform=transform,
+            full_channel_mask=True
+        )
+    else:
+        dataset = NiftiImageGenerator(
+            inputfolder,
+            input_size=input_size,
+            depth_size=depth_size,
+            transform=transform
+        )
 
 print(len(dataset))
 
@@ -80,16 +117,17 @@ in_channels = num_class_labels if with_condition else 1
 out_channels = 1
 
 
-model = create_model(input_size, num_channels, num_res_blocks, in_channels=in_channels, out_channels=out_channels).cuda()
+model = create_model(input_size, num_channels, num_res_blocks, in_channels=in_channels, out_channels=out_channels, dims=dimentions).cuda()
 
 diffusion = GaussianDiffusion(
     model,
     image_size = input_size,
-    depth_size = depth_size,
+    depth_size = depth_size if dimentions == 3 else None,
     timesteps = args.timesteps,   # number of steps
     loss_type = 'l1',    # L1 or L2
     with_condition=with_condition,
-    channels=out_channels
+    channels=out_channels,
+    dims=dimentions
 ).cuda()
 
 if len(resume_weight) > 0:
@@ -110,6 +148,7 @@ trainer = Trainer(
     fp16 = False,#True,                       # turn on mixed precision training with apex
     with_condition=with_condition,
     save_and_sample_every = save_and_sample_every,
+    plot_on_save=plot_on_save
 )
 
 trainer.train()
